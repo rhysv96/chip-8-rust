@@ -8,3 +8,6 @@ edition = "2021"
 [dependencies]
 sdl2 = "0.35.2"
 ticktock = "0.8.0"
+
+[profile.dev]
+overflow-checks = false

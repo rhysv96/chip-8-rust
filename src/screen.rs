@@ -8,15 +8,16 @@ use sdl2::{ Sdl, VideoSubsystem, EventPump };
 use sdl2::video::Window;
 use sdl2::render::Canvas;
 use sdl2::pixels::Color;
-use sdl2::rect::{Rect, Point};
+use sdl2::rect::{Rect};
 
 const PIXEL_SCALING: u32 = 30;
+const RENDER_GRID: bool = false;
 
 pub struct Screen {
     sdl_context: Sdl,
     video_subsystem: VideoSubsystem,
     canvas: Canvas<Window>,
-    event_pump: EventPump,
+    pub event_pump: EventPump,
 }
 
 impl Screen {
@@ -66,24 +67,29 @@ impl Screen {
                 } else {
                     c.set_draw_color(off);
                 }
+                c.fill_rect(Rect::new((x * scale) as i32, (y * scale) as i32, scale as u32, scale as u32)).unwrap();
+                /*
                 for yy in y*scale..y*scale+scale as usize {
                     for xx in x*scale..x*scale+scale as usize {
                         c.draw_point(Point::new(xx as i32, yy as i32)).unwrap();
                     }
                 }
+                */
             }
         }
 
         // grid
-        for y in 0..SCREEN_HEIGHT {
-            for x in 0..SCREEN_WIDTH {
-                c.set_draw_color(Color::RGB(128, 128, 128));
-                c.draw_rect(Rect::new(
-                    (x * scale) as i32,
-                    (y * scale) as i32,
-                    scale as u32,
-                    scale as u32,
-                )).unwrap();
+        if RENDER_GRID {
+            for y in 0..SCREEN_HEIGHT {
+                for x in 0..SCREEN_WIDTH {
+                    c.set_draw_color(Color::RGB(64, 64, 64));
+                    c.draw_rect(Rect::new(
+                        (x * scale) as i32,
+                        (y * scale) as i32,
+                        scale as u32,
+                        scale as u32,
+                    )).unwrap();
+                }
             }
         }
 
