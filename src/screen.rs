@@ -4,6 +4,7 @@ use crate::vm::{SCREEN_WIDTH, SCREEN_HEIGHT};
 
 use super::vm;
 
+use sdl2::keyboard::Keycode;
 use sdl2::{ Sdl, VideoSubsystem, EventPump };
 use sdl2::video::Window;
 use sdl2::render::Canvas;

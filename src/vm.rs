@@ -24,6 +24,7 @@ pub struct System {
     memory: [u8; MEMORY_BYTES],
     pub screen: [[bool; SCREEN_WIDTH]; SCREEN_HEIGHT],
     pub drew_in_last_tick: bool,
+    pub keys: u16,
     pc: u16,
     index: u16,
     stack: Vec<u16>,
@@ -36,6 +37,7 @@ impl System {
             memory: [0 as u8; MEMORY_BYTES],
             screen: [[false; SCREEN_WIDTH]; SCREEN_HEIGHT],
             drew_in_last_tick: false,
+            keys: 0,
             index: 0,
             pc: 0x200,
             stack: vec![],
@@ -171,6 +173,16 @@ impl System {
             return Ok(OpCode::SetIndexRegister(nnn));
         }
 
+        // 0xB###
+        if opcode & 0xF000 == 0xB000 {
+            return Ok(OpCode::JumpWithOffset(nnn));
+        }
+
+        // 0xC###
+        if opcode & 0xF000 == 0xC000 {
+            return Ok(OpCode::Random(x, nn));
+        }
+
         // 0xD###
         if opcode & 0xF000 == 0xD000 {
             return Ok(OpCode::Draw(x, y, n));
@@ -273,28 +285,35 @@ impl System {
             },
             OpCode::BitwiseOr(x, y) => {
                 self.registers[x as usize] |= self.registers[y as usize];
-            }
+            },
             OpCode::BitwiseAnd(x, y) => {
                 self.registers[x as usize] &= self.registers[y as usize];
-            }
+            },
             OpCode::BitwiseXor(x, y) => {
                 self.registers[x as usize] ^= self.registers[y as usize];
-            }
+            },
             OpCode::ShiftRight(x, y) => {
                 self.registers[x as usize] >>= self.registers[y as usize];
-            }
+            },
             OpCode::ShiftLeft(x, y) => {
                 self.registers[x as usize] <<= self.registers[y as usize];
-            }
+            },
             OpCode::AddYtoX(x, y) => {
                 self.registers[x as usize] += self.registers[y as usize];
-            }
+            },
             OpCode::SubtractYfromX(x, y) => {
                 self.registers[x as usize] -= self.registers[y as usize];
-            }
+            },
             OpCode::SubtractXfromY(x, y) => {
                 self.registers[x as usize] = self.registers[x as usize] - self.registers[y as usize];
-            }
+            },
+            OpCode::JumpWithOffset(address) => {
+                self.pc = address + self.registers[0] as u16;
+            },
+            OpCode::Random(x, mask) => {
+                let val: u8 = rand::random();
+                self.registers[x as usize] = mask & val;
+            },
         };
     }
 }
@@ -330,6 +349,9 @@ enum OpCode {
     SkipIfMemoryNotEqual(u8, u8), // 4XNN
     SkipIfRegisterEqual(u8, u8), // 5XY0
     SkipIfRegisterNotEqual(u8, u8), // 9XY0
+    JumpWithOffset(u16), // BNNN
+    SkipIfKeyPressed(u8), // EX9E
+    SkipIfKeyNotPressed(u8), // EXA1
 
     // KeyOp
     // Math
@@ -341,15 +363,13 @@ enum OpCode {
     SetIndexRegister(u16), // ANNN
 
     // Rand
+    Random(u8, u8), // CXNN
+
     // Sound
     // Timer
 
     //// TODO
     /*
-    JumpWithOffset(u16), // BNNN
-    Random(u8, u8), // CXNN
-    SkipIfKeyPressed(u8), // EX9E
-    SkipIfKeyNotPressed(u8), // EXA1
     GetDelayTimerValue(u8), // FX07
     SetDelayTimerValue(u8), // FX15
     SetSoundTimerValue(u8), // FX18
