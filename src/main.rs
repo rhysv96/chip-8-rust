@@ -11,6 +11,7 @@ pub mod vm;
 pub mod screen;
 
 pub fn main() {
+    println!("{}", (3 as u8) >> 1);
     let mut sys = vm::System::new();
     let mut screen = screen::Screen::new();
     let rom_data = get_file_as_byte_vec(&String::from("./test_opcode.ch8"));

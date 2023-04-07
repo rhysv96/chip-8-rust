@@ -20,6 +20,9 @@ const FONT: [[u8; 5]; 16] = [
     [0xF0, 0x80, 0xF0, 0x80, 0x80], // F
 ];
 
+// options
+const LOAD_Y_BEFORE_SHIFT: bool = true; // used in bitshift, loads reg y into x before shifting x
+
 pub struct System {
     memory: [u8; MEMORY_BYTES],
     pub screen: [[bool; SCREEN_WIDTH]; SCREEN_HEIGHT],
@@ -87,106 +90,49 @@ impl System {
         let nn = ((opcode & 0x00FF)) as u8;
         let nnn = ((opcode & 0x0FFF)) as u16;
 
-        // 0x00E0
-        if opcode == 0x00E0 {
-            return Ok(OpCode::ClearScreen);
-        }
-
-        // 0x00EE
-        if opcode == 0x00EE {
-            return Ok(OpCode::ExitSubroutine);
-        }
-
-        // 0x1###
-        if opcode & 0xF000 == 0x1000 {
-            return Ok(OpCode::Jump(nnn));
-        }
-
-        // 0x2###
-        if opcode & 0xF000 == 0x2000 {
-            return Ok(OpCode::EnterSubroutine(nnn));
-        }
-
-        // 0x3###
-        if opcode & 0xF000 == 0x3000 {
-            return Ok(OpCode::SkipIfMemoryEqual(x, nn));
-        }
-
-        // 0x4###
-        if opcode & 0xF000 == 0x4000 {
-            return Ok(OpCode::SkipIfMemoryNotEqual(x, nn));
-        }
-
-        // 0x5###
-        if opcode & 0xF000 == 0x5000 {
-            return Ok(OpCode::SkipIfRegisterEqual(x, y));
-        }
-
-        // 0x8###
-        if opcode & 0xF000 == 0x8000 {
-            if opcode & 0x000F == 0x0000 {
-                return Ok(OpCode::SetXtoY(x, y));
-            }
-            if opcode & 0x000F == 0x0001 {
-                return Ok(OpCode::BitwiseOr(x, y));
-            }
-            if opcode & 0x000F == 0x0002 {
-                return Ok(OpCode::BitwiseAnd(x, y));
-            }
-            if opcode & 0x000F == 0x0003 {
-                return Ok(OpCode::BitwiseXor(x, y));
-            }
-            if opcode & 0x000F == 0x0004 {
-                return Ok(OpCode::AddYtoX(x, y));
-            }
-            if opcode & 0x000F == 0x0005 {
-                return Ok(OpCode::SubtractYfromX(x, y));
-            }
-            if opcode & 0x000F == 0x0006 {
-                return Ok(OpCode::ShiftLeft(x, y));
-            }
-            if opcode & 0x000F == 0x0005 {
-                return Ok(OpCode::SubtractXfromY(x, y));
-            }
-            if opcode & 0x000F == 0x000E {
-                return Ok(OpCode::ShiftRight(x, y));
-            }
-        }
-
-        // 0x9###
-        if opcode & 0xF000 == 0x9000 {
-            return Ok(OpCode::SkipIfRegisterNotEqual(x, y));
-        }
-
-        // 0x6###
-        if opcode & 0xF000 == 0x6000 {
-            return Ok(OpCode::SetRegister(x, nn));
-        }
-
-        // 0x7###
-        if opcode & 0xF000 == 0x7000 {
-            return Ok(OpCode::AddRegister(x, nn));
-        }
-
-        // 0xA###
-        if opcode & 0xF000 == 0xA000 {
-            return Ok(OpCode::SetIndexRegister(nnn));
-        }
-
-        // 0xB###
-        if opcode & 0xF000 == 0xB000 {
-            return Ok(OpCode::JumpWithOffset(nnn));
-        }
-
-        // 0xC###
-        if opcode & 0xF000 == 0xC000 {
-            return Ok(OpCode::Random(x, nn));
-        }
-
-        // 0xD###
-        if opcode & 0xF000 == 0xD000 {
-            return Ok(OpCode::Draw(x, y, n));
-        }
+        match opcode & 0xF000 {
+            0x0000 => match opcode {
+                0x00E0 => return Ok(OpCode::ClearScreen),
+                0x00EE => return Ok(OpCode::ExitSubroutine),
+                _ => {},
+            },
+            0x1000 => return Ok(OpCode::Jump(nnn)),
+            0x2000 => return Ok(OpCode::EnterSubroutine(nnn)),
+            0x3000 => return Ok(OpCode::SkipIfMemoryEqual(x, nn)),
+            0x4000 => return Ok(OpCode::SkipIfMemoryNotEqual(x, nn)),
+            0x5000 => return Ok(OpCode::SkipIfRegisterEqual(x, y)),
+            0x6000 => return Ok(OpCode::SetRegister(x, nn)),
+            0x7000 => return Ok(OpCode::AddRegister(x, nn)),
+            0x8000 => match opcode & 0x000F {
+                0x0000 => return Ok(OpCode::SetXtoY(x, y)),
+                0x0001 => return Ok(OpCode::BitwiseOr(x, y)),
+                0x0002 => return Ok(OpCode::BitwiseAnd(x, y)),
+                0x0003 => return Ok(OpCode::BitwiseXor(x, y)),
+                0x0004 => return Ok(OpCode::AddYtoX(x, y)),
+                0x0005 => return Ok(OpCode::SubtractYfromX(x, y)),
+                0x0006 => return Ok(OpCode::ShiftRight(x, y)),
+                0x0007 => return Ok(OpCode::SubtractXfromY(x, y)),
+                0x000E => return Ok(OpCode::ShiftLeft(x, y)),
+                _ => {},
+            },
+            0x9000 => return Ok(OpCode::SkipIfRegisterNotEqual(x, y)),
+            0xA000 => return Ok(OpCode::SetIndexRegister(nnn)),
+            0xB000 => return Ok(OpCode::JumpWithOffset(nnn)),
+            0xC000 => return Ok(OpCode::Random(x, nn)),
+            0xD000 => return Ok(OpCode::Draw(x, y, n)),
+            0xE000 => match opcode & 0x00FF {
+                0x009E => return Ok(OpCode::SkipIfKeyPressed(x)),
+                0x00A1 => return Ok(OpCode::SkipIfKeyNotPressed(x)),
+                _ => {},
+            },
+            0xF000 => match opcode & 0x00FF {
+                0x0033 => return Ok(OpCode::SaveBCDConversionToMemory(x)),
+                0x0055 => return Ok(OpCode::StoreMemory(x)),
+                0x0065 => return Ok(OpCode::LoadMemory(x)),
+                _ => {},
+            },
+            _ => {},
+        };
 
         Err(format!("failed to parse opcode {:#06x}", opcode))
     }
@@ -260,24 +206,24 @@ impl System {
             OpCode::SetIndexRegister(value) => {
                 self.index = value;
             },
-            OpCode::SkipIfMemoryEqual(x, addr) => {
-                if self.registers[x as usize] == self.memory[addr as usize] {
-                    self.pc += 2
+            OpCode::SkipIfMemoryEqual(x, val) => {
+                if self.registers[x as usize] == val {
+                    self.pc += 2;
                 }
             },
-            OpCode::SkipIfMemoryNotEqual(x, addr) => {
-                if self.registers[x as usize] != self.memory[addr as usize] {
-                    self.pc += 2
+            OpCode::SkipIfMemoryNotEqual(x, val) => {
+                if self.registers[x as usize] != val {
+                    self.pc += 2;
                 }
             },
             OpCode::SkipIfRegisterEqual(x, y) => {
                 if self.registers[x as usize] == self.registers[y as usize] {
-                    self.pc += 2
+                    self.pc += 2;
                 }
             },
             OpCode::SkipIfRegisterNotEqual(x, y) => {
                 if self.registers[x as usize] != self.registers[y as usize] {
-                    self.pc += 2
+                    self.pc += 2;
                 }
             },
             OpCode::SetXtoY(x, y) => {
@@ -293,10 +239,20 @@ impl System {
                 self.registers[x as usize] ^= self.registers[y as usize];
             },
             OpCode::ShiftRight(x, y) => {
-                self.registers[x as usize] >>= self.registers[y as usize];
+                if LOAD_Y_BEFORE_SHIFT {
+                    self.registers[x as usize] = self.registers[y as usize];
+                }
+                let value = self.registers[x as usize];
+                self.registers[0xF as usize] = value & 1;
+                self.registers[x as usize] >>= 1;
             },
             OpCode::ShiftLeft(x, y) => {
-                self.registers[x as usize] <<= self.registers[y as usize];
+                if LOAD_Y_BEFORE_SHIFT {
+                    self.registers[x as usize] = self.registers[y as usize];
+                }
+                let value = self.registers[x as usize];
+                self.registers[0xF as usize] = (value & 0x80 == 0x80) as u8;
+                self.registers[x as usize] <<= 1;
             },
             OpCode::AddYtoX(x, y) => {
                 self.registers[x as usize] += self.registers[y as usize];
@@ -314,6 +270,35 @@ impl System {
                 let val: u8 = rand::random();
                 self.registers[x as usize] = mask & val;
             },
+            OpCode::SkipIfKeyPressed(x) => {
+                if self.keys >> x & 0x0001 == 1 {
+                    self.pc += 2;
+                }
+            },
+            OpCode::SkipIfKeyNotPressed(x) => {
+                if self.keys >> x & 0x0001 == 0 {
+                    self.pc += 2;
+                }
+            },
+            OpCode::StoreMemory(x) => {
+                for i in 0..x+1 {
+                    self.memory[(self.index + i as u16) as usize] = self.registers[i as usize];
+                }
+            },
+            OpCode::LoadMemory(x) => {
+                for i in 0..x+1 {
+                    self.registers[i as usize] = self.memory[(self.index + i as u16) as usize];
+                }
+            },
+            OpCode::SaveBCDConversionToMemory(x) => {
+                let value = self.registers[x as usize];
+                let hundreds = (value / 100) as u8;
+                let tens = ((value - (hundreds * 100)) / 10) as u8;
+                let ones = (value - hundreds * 100 - tens * 10) as u8;
+                self.memory[self.index as usize] = hundreds;
+                self.memory[(self.index + 1) as usize] = tens;
+                self.memory[(self.index + 2) as usize] = ones;
+            }
         };
     }
 }
@@ -324,6 +309,8 @@ enum OpCode {
     SetXtoY(u8, u8), // 8XY0
 
     // BCD
+    SaveBCDConversionToMemory(u8), // FX33
+
     // BitOp
     BitwiseOr(u8, u8), // 8XY1
     BitwiseAnd(u8, u8), // 8XY2
@@ -361,6 +348,8 @@ enum OpCode {
 
     // Memory
     SetIndexRegister(u16), // ANNN
+    StoreMemory(u8), // FX55
+    LoadMemory(u8), // FX65
 
     // Rand
     Random(u8, u8), // CXNN
@@ -376,8 +365,5 @@ enum OpCode {
     AddXToIndexRegister(u8), // FX1E
     GetKeyBlocking(u8), // FX0A
     SetIndexToFontCharacter(u8), // FX29
-    SaveBCDConversionToMemory(u8), // FX33
-    StoreMemory(u8), // FX55
-    LoadMemory(u8), // FX65
     */
 }
