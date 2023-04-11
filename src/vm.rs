@@ -28,6 +28,8 @@ pub struct System {
     pub screen: [[bool; SCREEN_WIDTH]; SCREEN_HEIGHT],
     pub drew_in_last_tick: bool,
     pub keys: u16,
+    pub sound_timer: u8,
+    pub delay_timer: u8,
     pc: u16,
     index: u16,
     stack: Vec<u16>,
@@ -45,6 +47,8 @@ impl System {
             pc: 0x200,
             stack: vec![],
             registers: [0 as u8; 16],
+            sound_timer: 0,
+            delay_timer: 0,
         };
 
         // initialize font
@@ -126,6 +130,9 @@ impl System {
                 _ => {},
             },
             0xF000 => match opcode & 0x00FF {
+                0x0018 => return Ok(OpCode::SetSoundTimerValue(x)),
+                0x0007 => return Ok(OpCode::GetDelayTimerValue(x)),
+                0x0015 => return Ok(OpCode::SetDelayTimerValue(x)),
                 0x0033 => return Ok(OpCode::SaveBCDConversionToMemory(x)),
                 0x0055 => return Ok(OpCode::StoreMemory(x)),
                 0x0065 => return Ok(OpCode::LoadMemory(x)),
@@ -298,7 +305,16 @@ impl System {
                 self.memory[self.index as usize] = hundreds;
                 self.memory[(self.index + 1) as usize] = tens;
                 self.memory[(self.index + 2) as usize] = ones;
-            }
+            },
+            OpCode::SetSoundTimerValue(x) => {
+                self.sound_timer = self.registers[x as usize];
+            },
+            OpCode::GetDelayTimerValue(x) => {
+                self.registers[x as usize] = self.delay_timer;
+            },
+            OpCode::SetDelayTimerValue(x) => {
+                self.delay_timer = self.registers[x as usize];
+            },
         };
     }
 }
@@ -355,13 +371,14 @@ enum OpCode {
     Random(u8, u8), // CXNN
 
     // Sound
+    SetSoundTimerValue(u8), // FX18
+
     // Timer
+    GetDelayTimerValue(u8), // FX07
+    SetDelayTimerValue(u8), // FX15
 
     //// TODO
     /*
-    GetDelayTimerValue(u8), // FX07
-    SetDelayTimerValue(u8), // FX15
-    SetSoundTimerValue(u8), // FX18
     AddXToIndexRegister(u8), // FX1E
     GetKeyBlocking(u8), // FX0A
     SetIndexToFontCharacter(u8), // FX29

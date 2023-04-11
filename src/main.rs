@@ -11,7 +11,6 @@ pub mod vm;
 pub mod screen;
 
 pub fn main() {
-    println!("{}", (3 as u8) >> 1);
     let mut sys = vm::System::new();
     let mut screen = screen::Screen::new();
     let rom_data = get_file_as_byte_vec(&String::from("./test_opcode.ch8"));
@@ -38,7 +37,16 @@ pub fn main() {
         if keeb.is_scancode_pressed(Scancode::V) { input += 1 << 15; }
         sys.keys = input;
 
+        if keeb.is_scancode_pressed(Scancode::Escape) {
+            break 'main;
+        }
+
         sys.tick();
+
+        if sys.sound_timer > 0 {
+            // TODO: beep
+            println!("beep!");
+        }
 
         if sys.drew_in_last_tick {
             screen.draw_screen(&sys.screen);
