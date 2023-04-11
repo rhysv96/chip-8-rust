@@ -23,17 +23,48 @@ const FONT: [[u8; 5]; 16] = [
 // options
 const LOAD_Y_BEFORE_SHIFT: bool = true; // used in bitshift, loads reg y into x before shifting x
 
+pub enum Status {
+    Active,
+    Terminated,
+}
+
 pub struct System {
     memory: [u8; MEMORY_BYTES],
     pub screen: [[bool; SCREEN_WIDTH]; SCREEN_HEIGHT],
-    pub drew_in_last_tick: bool,
     pub keys: u16,
     pub sound_timer: u8,
     pub delay_timer: u8,
+    pub status: Status,
     pc: u16,
     index: u16,
     stack: Vec<u16>,
     registers: [u8; 16],
+}
+
+impl Clone for Status {
+    fn clone(&self) -> Self {
+        match self {
+            Self::Active => Self::Active,
+            Self::Terminated => Self::Terminated,
+        }
+    }
+}
+
+impl Clone for System {
+    fn clone(&self) -> Self {
+        Self {
+            memory: self.memory.clone(),
+            screen: self.screen.clone(),
+            keys: self.keys.clone(),
+            sound_timer: self.sound_timer.clone(),
+            delay_timer: self.delay_timer.clone(),
+            pc: self.pc.clone(),
+            index: self.index.clone(),
+            stack: self.stack.clone(),
+            registers: self.registers.clone(),
+            status: self.status.clone(),
+        }
+    }
 }
 
 impl System {
@@ -41,7 +72,6 @@ impl System {
         let mut sys = System {
             memory: [0 as u8; MEMORY_BYTES],
             screen: [[false; SCREEN_WIDTH]; SCREEN_HEIGHT],
-            drew_in_last_tick: false,
             keys: 0,
             index: 0,
             pc: 0x200,
@@ -49,6 +79,7 @@ impl System {
             registers: [0 as u8; 16],
             sound_timer: 0,
             delay_timer: 0,
+            status: Status::Active,
         };
 
         // initialize font
@@ -63,13 +94,6 @@ impl System {
         sys
     }
 
-    pub fn tick(&mut self) {
-        self.drew_in_last_tick = false;
-        let opcode = self.fetch();
-        let opcode = System::decode(opcode).unwrap();
-        self.execute(opcode);
-    }
-
     pub fn load_rom(&mut self, data: Vec<u8>) {
         let mut index = 0x0200 as usize;
         for byte in data {
@@ -78,12 +102,18 @@ impl System {
         }
     }
 
-    fn fetch(&mut self) -> u16 {
+    pub fn tick(&self, next: &mut Self) {
+        let opcode = self.fetch(next);
+        let opcode = Self::decode(opcode).unwrap();
+        self.execute(opcode, next);
+    }
+
+    fn fetch(&self, next: &mut Self) -> u16 {
         let pc = self.pc as usize;
         let byte1 = self.memory[pc] as u16;
         let byte2 = self.memory[pc + 1] as u16;
         let instruction = (byte1 << 8) + byte2;
-        self.pc += 2;
+        next.pc += 2;
         instruction
     }
 
@@ -141,30 +171,27 @@ impl System {
             _ => {},
         };
 
-        Err(format!("failed to parse opcode {:#06x}", opcode))
+        Err(format!("failed to parse opcode {:#06X}", opcode))
     }
 
-    fn execute(&mut self, opcode: OpCode) {
+    fn execute(&self, opcode: OpCode, next: &mut Self) {
         match opcode {
             OpCode::AddRegister(address, value) => {
-                self.registers[address as usize] += value;
+                next.registers[address as usize] += value;
             }
             OpCode::SetRegister(address, value) => {
-                self.registers[address as usize] = value;
+                next.registers[address as usize] = value;
             }
             OpCode::ClearScreen => {
-                self.screen = [[false; 64]; 32];
+                next.screen = [[false; 64]; 32];
             },
             OpCode::Draw(x, y, height) => {
-                // trigger redraw after tick
-                self.drew_in_last_tick = true;
-
                 // get x and y pos from the register specified by args
                 let x = (self.registers[x as usize] % SCREEN_WIDTH as u8) as usize;
                 let y = (self.registers[y as usize] % SCREEN_HEIGHT as u8) as usize;
 
                 // set flag reg to 0
-                self.registers[0xF] = 0;
+                next.registers[0xF] = 0;
 
                 for n in 0..height {
                     let n = n as usize;
@@ -190,135 +217,140 @@ impl System {
 
                         // if new and current are both set, invert and set flag register to 1
                         if new && current {
-                            self.registers[0xF] = 1;
-                            self.screen[y + n][x + bit] = false;
+                            next.registers[0xF] = 1;
+                            next.screen[y + n][x + bit] = false;
 
                         // if screen isn't on but is on on sprite, then turn it on
                         } else if new && !current {
-                            self.screen[y + n][x + bit] = true;
+                            next.screen[y + n][x + bit] = true;
                         }
                     }
                 }
             }
             OpCode::Jump(address) => {
-                self.pc = address;
+                next.pc = address;
             },
             OpCode::EnterSubroutine(address) => {
-                self.stack.push(self.pc);
-                self.pc = address;
+                next.stack.push(next.pc);
+                next.pc = address;
             },
             OpCode::ExitSubroutine => {
-                self.pc = self.stack.pop().unwrap();
+                next.pc = next.stack.pop().unwrap();
             }
             OpCode::SetIndexRegister(value) => {
-                self.index = value;
+                next.index = value;
             },
             OpCode::SkipIfMemoryEqual(x, val) => {
                 if self.registers[x as usize] == val {
-                    self.pc += 2;
+                    next.pc += 2;
                 }
             },
             OpCode::SkipIfMemoryNotEqual(x, val) => {
                 if self.registers[x as usize] != val {
-                    self.pc += 2;
+                    next.pc += 2;
                 }
             },
             OpCode::SkipIfRegisterEqual(x, y) => {
                 if self.registers[x as usize] == self.registers[y as usize] {
-                    self.pc += 2;
+                    next.pc += 2;
                 }
             },
             OpCode::SkipIfRegisterNotEqual(x, y) => {
                 if self.registers[x as usize] != self.registers[y as usize] {
-                    self.pc += 2;
+                    next.pc += 2;
                 }
             },
             OpCode::SetXtoY(x, y) => {
-                self.registers[x as usize] = self.registers[y as usize];
+                next.registers[x as usize] = self.registers[y as usize];
             },
             OpCode::BitwiseOr(x, y) => {
-                self.registers[x as usize] |= self.registers[y as usize];
+                next.registers[x as usize] |= self.registers[y as usize];
             },
             OpCode::BitwiseAnd(x, y) => {
-                self.registers[x as usize] &= self.registers[y as usize];
+                next.registers[x as usize] &= self.registers[y as usize];
             },
             OpCode::BitwiseXor(x, y) => {
-                self.registers[x as usize] ^= self.registers[y as usize];
+                next.registers[x as usize] ^= self.registers[y as usize];
             },
             OpCode::ShiftRight(x, y) => {
                 if LOAD_Y_BEFORE_SHIFT {
-                    self.registers[x as usize] = self.registers[y as usize];
+                    next.registers[x as usize] = self.registers[y as usize];
                 }
                 let value = self.registers[x as usize];
-                self.registers[0xF as usize] = value & 1;
-                self.registers[x as usize] >>= 1;
+                next.registers[0xF as usize] = value & 1;
+                next.registers[x as usize] >>= 1;
             },
             OpCode::ShiftLeft(x, y) => {
                 if LOAD_Y_BEFORE_SHIFT {
-                    self.registers[x as usize] = self.registers[y as usize];
+                    next.registers[x as usize] = self.registers[y as usize];
                 }
                 let value = self.registers[x as usize];
-                self.registers[0xF as usize] = (value & 0x80 == 0x80) as u8;
-                self.registers[x as usize] <<= 1;
+                next.registers[0xF as usize] = (value & 0x80 == 0x80) as u8;
+                next.registers[x as usize] <<= 1;
             },
             OpCode::AddYtoX(x, y) => {
-                self.registers[x as usize] += self.registers[y as usize];
+                next.registers[x as usize] += self.registers[y as usize];
             },
             OpCode::SubtractYfromX(x, y) => {
-                self.registers[x as usize] -= self.registers[y as usize];
+                next.registers[x as usize] -= self.registers[y as usize];
             },
             OpCode::SubtractXfromY(x, y) => {
-                self.registers[x as usize] = self.registers[x as usize] - self.registers[y as usize];
+                next.registers[x as usize] = self.registers[x as usize] - self.registers[y as usize];
             },
             OpCode::JumpWithOffset(address) => {
-                self.pc = address + self.registers[0] as u16;
+                next.pc = address + self.registers[0] as u16;
             },
             OpCode::Random(x, mask) => {
                 let val: u8 = rand::random();
-                self.registers[x as usize] = mask & val;
+                next.registers[x as usize] = mask & val;
             },
             OpCode::SkipIfKeyPressed(x) => {
                 if self.keys >> x & 0x0001 == 1 {
-                    self.pc += 2;
+                    next.pc += 2;
                 }
             },
             OpCode::SkipIfKeyNotPressed(x) => {
                 if self.keys >> x & 0x0001 == 0 {
-                    self.pc += 2;
+                    next.pc += 2;
                 }
             },
             OpCode::StoreMemory(x) => {
                 for i in 0..x+1 {
-                    self.memory[(self.index + i as u16) as usize] = self.registers[i as usize];
+                    next.memory[(self.index + i as u16) as usize] = self.registers[i as usize];
                 }
             },
             OpCode::LoadMemory(x) => {
                 for i in 0..x+1 {
-                    self.registers[i as usize] = self.memory[(self.index + i as u16) as usize];
+                    next.registers[i as usize] = self.memory[(self.index + i as u16) as usize];
                 }
             },
             OpCode::SaveBCDConversionToMemory(x) => {
-                let value = self.registers[x as usize];
+                let value = next.registers[x as usize];
                 let hundreds = (value / 100) as u8;
                 let tens = ((value - (hundreds * 100)) / 10) as u8;
                 let ones = (value - hundreds * 100 - tens * 10) as u8;
-                self.memory[self.index as usize] = hundreds;
-                self.memory[(self.index + 1) as usize] = tens;
-                self.memory[(self.index + 2) as usize] = ones;
+                next.memory[self.index as usize] = hundreds;
+                next.memory[(self.index + 1) as usize] = tens;
+                next.memory[(self.index + 2) as usize] = ones;
             },
             OpCode::SetSoundTimerValue(x) => {
-                self.sound_timer = self.registers[x as usize];
+                next.sound_timer = self.registers[x as usize];
             },
             OpCode::GetDelayTimerValue(x) => {
-                self.registers[x as usize] = self.delay_timer;
+                next.registers[x as usize] = self.delay_timer;
             },
             OpCode::SetDelayTimerValue(x) => {
-                self.delay_timer = self.registers[x as usize];
+                next.delay_timer = self.registers[x as usize];
             },
         };
     }
+
+    fn terminate(&mut self) {
+        self.status = Status::Terminated;
+    }
 }
 
+#[derive(Debug)]
 enum OpCode {
     //// COMPLETE
     // Assign
