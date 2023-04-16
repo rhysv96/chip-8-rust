@@ -20,6 +20,24 @@ const FONT: [[u8; 5]; 16] = [
     [0xF0, 0x80, 0xF0, 0x80, 0x80], // F
 ];
 
+macro_rules! poc {
+    ($opcode:expr, x) => {
+        (($opcode & 0x0F00) >> 8) as u8
+    };
+    ($opcode:expr, y) => {
+        (($opcode & 0x00F0) >> 4) as u8
+    };
+    ($opcode:expr, n) => {
+        ($opcode & 0x000F) as u8
+    };
+    ($opcode:expr, nn) => {
+        ($opcode & 0x00FF) as u8
+    };
+    ($opcode:expr, nnn) => {
+        ($opcode & 0x0FFF) as u16
+    };
+}
+
 // options
 const LOAD_Y_BEFORE_SHIFT: bool = true; // used in bitshift, loads reg y into x before shifting x
 
@@ -117,58 +135,52 @@ impl System {
         instruction
     }
 
-    fn decode(opcode: u16) -> Result<OpCode, String> {
-        let x = ((opcode & 0x0F00) >> 8) as u8;
-        let y = ((opcode & 0x00F0) >> 4) as u8;
-        let n = (opcode & 0x000F) as u8;
-        let nn = (opcode & 0x00FF) as u8;
-        let nnn = (opcode & 0x0FFF) as u16;
-
+    pub fn decode(opcode: u16) -> Result<OpCode, String> {
         match opcode & 0xF000 {
             0x0000 => match opcode {
                 0x00E0 => return Ok(OpCode::ClearScreen),
                 0x00EE => return Ok(OpCode::ExitSubroutine),
                 _ => {},
             },
-            0x1000 => return Ok(OpCode::Jump(nnn)),
-            0x2000 => return Ok(OpCode::EnterSubroutine(nnn)),
-            0x3000 => return Ok(OpCode::SkipIfMemoryEqual(x, nn)),
-            0x4000 => return Ok(OpCode::SkipIfMemoryNotEqual(x, nn)),
-            0x5000 => return Ok(OpCode::SkipIfRegisterEqual(x, y)),
-            0x6000 => return Ok(OpCode::SetRegister(x, nn)),
-            0x7000 => return Ok(OpCode::AddRegister(x, nn)),
+            0x1000 => return Ok(OpCode::Jump(poc!(opcode, nnn))),
+            0x2000 => return Ok(OpCode::EnterSubroutine(poc!(opcode, nnn))),
+            0x3000 => return Ok(OpCode::SkipIfMemoryEqual(poc!(opcode, x), poc!(opcode, nn))),
+            0x4000 => return Ok(OpCode::SkipIfMemoryNotEqual(poc!(opcode, x), poc!(opcode, nn))),
+            0x5000 => return Ok(OpCode::SkipIfRegisterEqual(poc!(opcode, x), poc!(opcode, y))),
+            0x6000 => return Ok(OpCode::SetRegister(poc!(opcode, x), poc!(opcode, nn))),
+            0x7000 => return Ok(OpCode::AddRegister(poc!(opcode, x), poc!(opcode, nn))),
             0x8000 => match opcode & 0x000F {
-                0x0000 => return Ok(OpCode::SetXtoY(x, y)),
-                0x0001 => return Ok(OpCode::BitwiseOr(x, y)),
-                0x0002 => return Ok(OpCode::BitwiseAnd(x, y)),
-                0x0003 => return Ok(OpCode::BitwiseXor(x, y)),
-                0x0004 => return Ok(OpCode::AddYtoX(x, y)),
-                0x0005 => return Ok(OpCode::SubtractYfromX(x, y)),
-                0x0006 => return Ok(OpCode::ShiftRight(x, y)),
-                0x0007 => return Ok(OpCode::SubtractXfromY(x, y)),
-                0x000E => return Ok(OpCode::ShiftLeft(x, y)),
+                0x0000 => return Ok(OpCode::SetXtoY(poc!(opcode, x), poc!(opcode, y))),
+                0x0001 => return Ok(OpCode::BitwiseOr(poc!(opcode, x), poc!(opcode, y))),
+                0x0002 => return Ok(OpCode::BitwiseAnd(poc!(opcode, x), poc!(opcode, y))),
+                0x0003 => return Ok(OpCode::BitwiseXor(poc!(opcode, x), poc!(opcode, y))),
+                0x0004 => return Ok(OpCode::AddYtoX(poc!(opcode, x), poc!(opcode, y))),
+                0x0005 => return Ok(OpCode::SubtractYfromX(poc!(opcode, x), poc!(opcode, y))),
+                0x0006 => return Ok(OpCode::ShiftRight(poc!(opcode, x), poc!(opcode, y))),
+                0x0007 => return Ok(OpCode::SubtractXfromY(poc!(opcode, x), poc!(opcode, y))),
+                0x000E => return Ok(OpCode::ShiftLeft(poc!(opcode, x), poc!(opcode, y))),
                 _ => {},
             },
-            0x9000 => return Ok(OpCode::SkipIfRegisterNotEqual(x, y)),
-            0xA000 => return Ok(OpCode::SetIndexRegister(nnn)),
-            0xB000 => return Ok(OpCode::JumpWithOffset(nnn)),
-            0xC000 => return Ok(OpCode::Random(x, nn)),
-            0xD000 => return Ok(OpCode::Draw(x, y, n)),
+            0x9000 => return Ok(OpCode::SkipIfRegisterNotEqual(poc!(opcode, x), poc!(opcode, y))),
+            0xA000 => return Ok(OpCode::SetIndexRegister(poc!(opcode, nnn))),
+            0xB000 => return Ok(OpCode::JumpWithOffset(poc!(opcode, nnn))),
+            0xC000 => return Ok(OpCode::Random(poc!(opcode, x), poc!(opcode, nn))),
+            0xD000 => return Ok(OpCode::Draw(poc!(opcode, x), poc!(opcode, y), poc!(opcode, n))),
             0xE000 => match opcode & 0x00FF {
-                0x009E => return Ok(OpCode::SkipIfKeyPressed(x)),
-                0x00A1 => return Ok(OpCode::SkipIfKeyNotPressed(x)),
+                0x009E => return Ok(OpCode::SkipIfKeyPressed(poc!(opcode, x))),
+                0x00A1 => return Ok(OpCode::SkipIfKeyNotPressed(poc!(opcode, x))),
                 _ => {},
             },
             0xF000 => match opcode & 0x00FF {
-                0x0018 => return Ok(OpCode::SetSoundTimerValue(x)),
-                0x0007 => return Ok(OpCode::GetDelayTimerValue(x)),
-                0x0015 => return Ok(OpCode::SetDelayTimerValue(x)),
-                0x0033 => return Ok(OpCode::SaveBCDConversionToMemory(x)),
-                0x0055 => return Ok(OpCode::StoreMemory(x)),
-                0x0065 => return Ok(OpCode::LoadMemory(x)),
-                0x001E => return Ok(OpCode::AddXToIndexRegister(x)),
-                0x0029 => return Ok(OpCode::SetIndexToFontCharacter(x)),
-                0x000A => return Ok(OpCode::GetKeyBlocking(x)),
+                0x0018 => return Ok(OpCode::SetSoundTimerValue(poc!(opcode, x))),
+                0x0007 => return Ok(OpCode::GetDelayTimerValue(poc!(opcode, x))),
+                0x0015 => return Ok(OpCode::SetDelayTimerValue(poc!(opcode, x))),
+                0x0033 => return Ok(OpCode::SaveBCDConversionToMemory(poc!(opcode, x))),
+                0x0055 => return Ok(OpCode::StoreMemory(poc!(opcode, x))),
+                0x0065 => return Ok(OpCode::LoadMemory(poc!(opcode, x))),
+                0x001E => return Ok(OpCode::AddXToIndexRegister(poc!(opcode, x))),
+                0x0029 => return Ok(OpCode::SetIndexToFontCharacter(poc!(opcode, x))),
+                0x000A => return Ok(OpCode::GetKeyBlocking(poc!(opcode, x))),
                 _ => {},
             },
             _ => {},
@@ -366,7 +378,7 @@ impl System {
 }
 
 #[derive(Debug)]
-enum OpCode {
+pub enum OpCode {
     //// COMPLETE
     // Assign
     SetXtoY(u8, u8), // 8XY0
