@@ -25,7 +25,7 @@ enum Signal {
 
 pub fn main() {
     let mut sys = vm::System::new();
-    let rom_data = get_file_as_byte_vec(&String::from("./pong.ch8"));
+    let rom_data = get_file_as_byte_vec(&String::from("./tetris.ch8"));
     sys.load_rom(rom_data);
 
     let sys = Arc::new(RwLock::new(sys));
@@ -106,29 +106,31 @@ pub fn main() {
         let sink = Sink::try_new(&stream_handle).unwrap();
         let mut beeping = false;
 
-        let mut beep_start = Instant::now();
-
         'main: loop {
             let tick_start = Instant::now();
 
             let keeb = screen.event_pump.keyboard_state();
             let mut input: u16 = 0;
-            if keeb.is_scancode_pressed(Scancode::Num1) { input += 1; }
-            if keeb.is_scancode_pressed(Scancode::Num2) { input += 1 << 1; }
-            if keeb.is_scancode_pressed(Scancode::Num3) { input += 1 << 2; }
-            if keeb.is_scancode_pressed(Scancode::Num4) { input += 1 << 3; }
-            if keeb.is_scancode_pressed(Scancode::Q) { input += 1 << 4; }
-            if keeb.is_scancode_pressed(Scancode::W) { input += 1 << 5; }
-            if keeb.is_scancode_pressed(Scancode::E) { input += 1 << 6; }
-            if keeb.is_scancode_pressed(Scancode::R) { input += 1 << 7; }
-            if keeb.is_scancode_pressed(Scancode::A) { input += 1 << 8; }
-            if keeb.is_scancode_pressed(Scancode::S) { input += 1 << 9; }
-            if keeb.is_scancode_pressed(Scancode::D) { input += 1 << 10; }
-            if keeb.is_scancode_pressed(Scancode::F) { input += 1 << 11; }
-            if keeb.is_scancode_pressed(Scancode::Z) { input += 1 << 12; }
-            if keeb.is_scancode_pressed(Scancode::X) { input += 1 << 13; }
-            if keeb.is_scancode_pressed(Scancode::C) { input += 1 << 14; }
-            if keeb.is_scancode_pressed(Scancode::V) { input += 1 << 15; }
+            // 1 2 3 C
+            // 4 5 6 D
+            // 7 8 9 E
+            // A 0 B F
+            if keeb.is_scancode_pressed(Scancode::Num1) { input += 1 << 1; } // 1
+            if keeb.is_scancode_pressed(Scancode::Num2) { input += 1 << 2; } // 2
+            if keeb.is_scancode_pressed(Scancode::Num3) { input += 1 << 3; } // 3
+            if keeb.is_scancode_pressed(Scancode::Num4) { input += 1 << 12; } // C
+            if keeb.is_scancode_pressed(Scancode::Q) { input += 1 << 4; } // 4
+            if keeb.is_scancode_pressed(Scancode::W) { input += 1 << 5; } // 5
+            if keeb.is_scancode_pressed(Scancode::E) { input += 1 << 6; } // 6
+            if keeb.is_scancode_pressed(Scancode::R) { input += 1 << 13; } // D
+            if keeb.is_scancode_pressed(Scancode::A) { input += 1 << 7; } // 7
+            if keeb.is_scancode_pressed(Scancode::S) { input += 1 << 8; } // 8
+            if keeb.is_scancode_pressed(Scancode::D) { input += 1 << 9; } // 9
+            if keeb.is_scancode_pressed(Scancode::F) { input += 1 << 14; } // E
+            if keeb.is_scancode_pressed(Scancode::Z) { input += 1 << 10; } // A
+            if keeb.is_scancode_pressed(Scancode::X) { input += 1 } // 0
+            if keeb.is_scancode_pressed(Scancode::C) { input += 1 << 11; } // B
+            if keeb.is_scancode_pressed(Scancode::V) { input += 1 << 15; } // F
 
             if sys_render.read().unwrap().keys != input {
                 tx.send(Signal::SendKeys(input)).unwrap();
@@ -169,14 +171,10 @@ pub fn main() {
             {
                 let sound_timer = { sys_render.read().unwrap().sound_timer };
                 if sound_timer > 0 && !beeping {
-                    println!("starting to beep");
-                    beep_start = Instant::now();
                     let source = SineWave::new(500.0).take_duration(Duration::from_secs(5)).amplify(0.2);
                     sink.append(source);
                     beeping = true;
                 } else if sound_timer == 0 && beeping {
-                    let beep_end = Instant::now();
-                    println!("stopping, beeped for {}ms", beep_end.duration_since(beep_start).as_millis());
                     sink.clear();
                     beeping = false;
                 }

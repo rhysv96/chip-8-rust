@@ -166,6 +166,9 @@ impl System {
                 0x0033 => return Ok(OpCode::SaveBCDConversionToMemory(x)),
                 0x0055 => return Ok(OpCode::StoreMemory(x)),
                 0x0065 => return Ok(OpCode::LoadMemory(x)),
+                0x001E => return Ok(OpCode::AddXToIndexRegister(x)),
+                0x0029 => return Ok(OpCode::SetIndexToFontCharacter(x)),
+                0x000A => return Ok(OpCode::GetKeyBlocking(x)),
                 _ => {},
             },
             _ => {},
@@ -306,12 +309,12 @@ impl System {
                 next.registers[x as usize] = mask & val;
             },
             OpCode::SkipIfKeyPressed(x) => {
-                if self.keys >> x & 0x0001 == 1 {
+                if self.keys >> self.registers[x as usize] & 0x0001 == 1 {
                     next.pc += 2;
                 }
             },
             OpCode::SkipIfKeyNotPressed(x) => {
-                if self.keys >> x & 0x0001 == 0 {
+                if self.keys >> self.registers[x as usize] & 0x0001 == 0 {
                     next.pc += 2;
                 }
             },
@@ -343,6 +346,17 @@ impl System {
             OpCode::SetDelayTimerValue(x) => {
                 next.delay_timer = self.registers[x as usize];
             },
+            OpCode::GetKeyBlocking(x) => {
+                if self.keys >> self.registers[x as usize] & 0x0001 == 1 {
+                    next.pc -= 2;
+                }
+            }
+            OpCode::AddXToIndexRegister(x) => {
+                next.index += self.registers[x as usize] as u16;
+            },
+            OpCode::SetIndexToFontCharacter(x) => {
+                next.index = x as u16 * FONT[0].len() as u16;
+            },
         };
     }
 
@@ -368,6 +382,10 @@ enum OpCode {
     ShiftLeft(u8, u8), // 8XYE
 
     // Cond
+    SkipIfMemoryEqual(u8, u8), // 3XNN
+    SkipIfMemoryNotEqual(u8, u8), // 4XNN
+    SkipIfRegisterEqual(u8, u8), // 5XY0
+    SkipIfRegisterNotEqual(u8, u8), // 9XY0
 
     // Const
     SetRegister(u8, u8), // 6XNN
@@ -381,15 +399,13 @@ enum OpCode {
     Jump(u16), // 1NNN
     ExitSubroutine, // 00EE
     EnterSubroutine(u16), // 2NNN
-    SkipIfMemoryEqual(u8, u8), // 3XNN
-    SkipIfMemoryNotEqual(u8, u8), // 4XNN
-    SkipIfRegisterEqual(u8, u8), // 5XY0
-    SkipIfRegisterNotEqual(u8, u8), // 9XY0
     JumpWithOffset(u16), // BNNN
-    SkipIfKeyPressed(u8), // EX9E
-    SkipIfKeyNotPressed(u8), // EXA1
 
     // KeyOp
+    SkipIfKeyPressed(u8), // EX9E
+    SkipIfKeyNotPressed(u8), // EXA1
+    GetKeyBlocking(u8), // FX0A
+
     // Math
     AddYtoX(u8, u8), // 8XY4
     SubtractYfromX(u8, u8), // 8XY5
@@ -397,6 +413,8 @@ enum OpCode {
 
     // Memory
     SetIndexRegister(u16), // ANNN
+    AddXToIndexRegister(u8), // FX1E
+    SetIndexToFontCharacter(u8), // FX29
     StoreMemory(u8), // FX55
     LoadMemory(u8), // FX65
 
@@ -409,11 +427,4 @@ enum OpCode {
     // Timer
     GetDelayTimerValue(u8), // FX07
     SetDelayTimerValue(u8), // FX15
-
-    //// TODO
-    /*
-    AddXToIndexRegister(u8), // FX1E
-    GetKeyBlocking(u8), // FX0A
-    SetIndexToFontCharacter(u8), // FX29
-    */
 }
