@@ -90,28 +90,11 @@ impl System {
 
                 let write_start = Instant::now();
                 {
-                    'delay: loop {
-                        match receiver.try_recv() {
-                            Ok(signal) => match signal {
-                                Signal::DecrementDelayTimer => if vm.delay_timer > 0 { vm.delay_timer -= 1 }
-                                Signal::DecrementSoundTimer => if local_interfaces.sound_timer > 0 { local_interfaces.sound_timer -= 1 }
-                                Signal::Terminate => vm.terminate(),
-                                Signal::SendKeys(keys) => local_interfaces.keys = keys,
-                            },
-                            Err(TryRecvError::Empty) => {
-                                break 'delay;
-                            },
-                            Err(TryRecvError::Disconnected) => {
-                                panic!("The signal channel has been disconnected");
-                            },
-                        }
-                    }
+                    Self::tick(&mut vm, &mut local_interfaces, &receiver);
 
                     if let Status::Terminated = vm.status {
                         break;
                     }
-
-                    vm.tick(&mut local_interfaces);
                 }
                 let write_elapsed = write_start.elapsed();
 
@@ -142,6 +125,27 @@ impl System {
         (vm_thread, sender)
     }
 
+    fn tick(vm: &mut VM, local_interfaces: &mut Interfaces, receiver: &Receiver<Signal>) {
+        'delay: loop {
+            match receiver.try_recv() {
+                Ok(signal) => match signal {
+                    Signal::DecrementDelayTimer => if vm.delay_timer > 0 { vm.delay_timer -= 1 }
+                    Signal::DecrementSoundTimer => if local_interfaces.sound_timer > 0 { local_interfaces.sound_timer -= 1 }
+                    Signal::Terminate => vm.terminate(),
+                    Signal::SendKeys(keys) => local_interfaces.keys = keys,
+                },
+                Err(TryRecvError::Empty) => {
+                    break 'delay;
+                },
+                Err(TryRecvError::Disconnected) => {
+                    panic!("The signal channel has been disconnected");
+                },
+            }
+        }
+
+        vm.tick(local_interfaces);
+    }
+
     fn start_io_thread(&mut self, sender: Sender<Signal>) -> JoinHandle<()> {
         let interfaces = self.interfaces.clone();
         let io_thread = thread::spawn(move || {
@@ -159,32 +163,10 @@ impl System {
             'main: loop {
                 let tick_start = Instant::now();
 
-                let keeb = io.event_pump.keyboard_state();
-                let mut input: u16 = 0;
-                // 1 2 3 C
-                // 4 5 6 D
-                // 7 8 9 E
-                // A 0 B F
-                if keeb.is_scancode_pressed(Scancode::Num1) { input += 1 << 1; } // 1
-                if keeb.is_scancode_pressed(Scancode::Num2) { input += 1 << 2; } // 2
-                if keeb.is_scancode_pressed(Scancode::Num3) { input += 1 << 3; } // 3
-                if keeb.is_scancode_pressed(Scancode::Num4) { input += 1 << 12; } // C
-                if keeb.is_scancode_pressed(Scancode::Q) { input += 1 << 4; } // 4
-                if keeb.is_scancode_pressed(Scancode::W) { input += 1 << 5; } // 5
-                if keeb.is_scancode_pressed(Scancode::E) { input += 1 << 6; } // 6
-                if keeb.is_scancode_pressed(Scancode::R) { input += 1 << 13; } // D
-                if keeb.is_scancode_pressed(Scancode::A) { input += 1 << 7; } // 7
-                if keeb.is_scancode_pressed(Scancode::S) { input += 1 << 8; } // 8
-                if keeb.is_scancode_pressed(Scancode::D) { input += 1 << 9; } // 9
-                if keeb.is_scancode_pressed(Scancode::F) { input += 1 << 14; } // E
-                if keeb.is_scancode_pressed(Scancode::Z) { input += 1 << 10; } // A
-                if keeb.is_scancode_pressed(Scancode::X) { input += 1 } // 0
-                if keeb.is_scancode_pressed(Scancode::C) { input += 1 << 11; } // B
-                if keeb.is_scancode_pressed(Scancode::V) { input += 1 << 15; } // F
-
+                let input = Self::process_input(&io);
                 sender.send(Signal::SendKeys(input)).unwrap();
 
-                if keeb.is_scancode_pressed(Scancode::Escape) {
+                if io.event_pump.keyboard_state().is_scancode_pressed(Scancode::Escape) {
                     sender.send(Signal::Terminate).unwrap();
                     break 'main;
                 }
@@ -231,5 +213,32 @@ impl System {
         });
 
         io_thread
+    }
+
+    fn process_input(io: &IO) -> u16 {
+        let keeb = io.event_pump.keyboard_state();
+        let mut input: u16 = 0;
+        // 1 2 3 C
+        // 4 5 6 D
+        // 7 8 9 E
+        // A 0 B F
+        if keeb.is_scancode_pressed(Scancode::Num1) { input += 1 << 1; } // 1
+        if keeb.is_scancode_pressed(Scancode::Num2) { input += 1 << 2; } // 2
+        if keeb.is_scancode_pressed(Scancode::Num3) { input += 1 << 3; } // 3
+        if keeb.is_scancode_pressed(Scancode::Num4) { input += 1 << 12; } // C
+        if keeb.is_scancode_pressed(Scancode::Q) { input += 1 << 4; } // 4
+        if keeb.is_scancode_pressed(Scancode::W) { input += 1 << 5; } // 5
+        if keeb.is_scancode_pressed(Scancode::E) { input += 1 << 6; } // 6
+        if keeb.is_scancode_pressed(Scancode::R) { input += 1 << 13; } // D
+        if keeb.is_scancode_pressed(Scancode::A) { input += 1 << 7; } // 7
+        if keeb.is_scancode_pressed(Scancode::S) { input += 1 << 8; } // 8
+        if keeb.is_scancode_pressed(Scancode::D) { input += 1 << 9; } // 9
+        if keeb.is_scancode_pressed(Scancode::F) { input += 1 << 14; } // E
+        if keeb.is_scancode_pressed(Scancode::Z) { input += 1 << 10; } // A
+        if keeb.is_scancode_pressed(Scancode::X) { input += 1 } // 0
+        if keeb.is_scancode_pressed(Scancode::C) { input += 1 << 11; } // B
+        if keeb.is_scancode_pressed(Scancode::V) { input += 1 << 15; } // F
+
+        input
     }
 }
