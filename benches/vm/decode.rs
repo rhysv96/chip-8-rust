@@ -1,5 +1,5 @@
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
-use chip_8_rs::vm::System;
+use chip_8_rs::vm::VM;
 
 const codes: [u16; 34] = [
     0x8120,
@@ -40,7 +40,7 @@ const codes: [u16; 34] = [
 
 fn criterion_benchmark(c: &mut Criterion) {
     for code in codes {
-        c.bench_function(&format!("decode {}", code), |b| b.iter(|| System::decode(black_box(code))));
+        c.bench_function(&format!("decode {}", code), |b| b.iter(|| VM::decode(black_box(code))));
     }
 }
 

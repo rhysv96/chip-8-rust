@@ -13,13 +13,13 @@ use sdl2::rect::Rect;
 const PIXEL_SCALING: u32 = 30;
 const RENDER_GRID: bool = false;
 
-pub struct Screen {
+pub struct IO {
     canvas: Canvas<Window>,
     pub event_pump: EventPump,
 }
 
-impl Screen {
-    pub fn new() -> Screen {
+impl IO {
+    pub fn new() -> Self {
         let sdl_context = sdl2::init().unwrap();
         let video_subsystem = sdl_context.video().unwrap();
 
@@ -40,7 +40,7 @@ impl Screen {
         canvas.present();
         let event_pump = sdl_context.event_pump().unwrap();
 
-        Screen {
+        Self {
             canvas,
             event_pump,
         }
