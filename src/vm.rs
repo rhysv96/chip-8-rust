@@ -120,9 +120,9 @@ impl System {
     fn decode(opcode: u16) -> Result<OpCode, String> {
         let x = ((opcode & 0x0F00) >> 8) as u8;
         let y = ((opcode & 0x00F0) >> 4) as u8;
-        let n = ((opcode & 0x000F)) as u8;
-        let nn = ((opcode & 0x00FF)) as u8;
-        let nnn = ((opcode & 0x0FFF)) as u16;
+        let n = (opcode & 0x000F) as u8;
+        let nn = (opcode & 0x00FF) as u8;
+        let nnn = (opcode & 0x0FFF) as u16;
 
         match opcode & 0xF000 {
             0x0000 => match opcode {
@@ -178,10 +178,10 @@ impl System {
         match opcode {
             OpCode::AddRegister(address, value) => {
                 next.registers[address as usize] += value;
-            }
+            },
             OpCode::SetRegister(address, value) => {
                 next.registers[address as usize] = value;
-            }
+            },
             OpCode::ClearScreen => {
                 next.screen = [[false; 64]; 32];
             },
@@ -196,7 +196,7 @@ impl System {
                 for n in 0..height {
                     let n = n as usize;
                     // break out if off edge of screen
-                    if y + n > SCREEN_HEIGHT {
+                    if y + n >= SCREEN_HEIGHT {
                         break;
                     }
 
@@ -205,7 +205,7 @@ impl System {
 
                     for bit in 0..8 {
                         // break out if off edge of screen
-                        if x + bit > SCREEN_WIDTH {
+                        if x + bit >= SCREEN_WIDTH {
                             break;
                         }
 
@@ -226,7 +226,7 @@ impl System {
                         }
                     }
                 }
-            }
+            },
             OpCode::Jump(address) => {
                 next.pc = address;
             },
@@ -236,7 +236,7 @@ impl System {
             },
             OpCode::ExitSubroutine => {
                 next.pc = next.stack.pop().unwrap();
-            }
+            },
             OpCode::SetIndexRegister(value) => {
                 next.index = value;
             },
@@ -295,7 +295,8 @@ impl System {
                 next.registers[x as usize] -= self.registers[y as usize];
             },
             OpCode::SubtractXfromY(x, y) => {
-                next.registers[x as usize] = self.registers[x as usize] - self.registers[y as usize];
+                next.registers[x as usize] =
+                    self.registers[x as usize] - self.registers[y as usize];
             },
             OpCode::JumpWithOffset(address) => {
                 next.pc = address + self.registers[0] as u16;
@@ -315,12 +316,12 @@ impl System {
                 }
             },
             OpCode::StoreMemory(x) => {
-                for i in 0..x+1 {
+                for i in 0..x + 1 {
                     next.memory[(self.index + i as u16) as usize] = self.registers[i as usize];
                 }
             },
             OpCode::LoadMemory(x) => {
-                for i in 0..x+1 {
+                for i in 0..x + 1 {
                     next.registers[i as usize] = self.memory[(self.index + i as u16) as usize];
                 }
             },
@@ -345,7 +346,7 @@ impl System {
         };
     }
 
-    fn terminate(&mut self) {
+    pub fn terminate(&mut self) {
         self.status = Status::Terminated;
     }
 }
@@ -373,7 +374,7 @@ enum OpCode {
     AddRegister(u8, u8), // 7XNN
 
     // Display
-    ClearScreen, /// 00e0
+    ClearScreen, // 00E0
     Draw(u8, u8, u8), // DXYN
 
     // Flow

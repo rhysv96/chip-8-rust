@@ -3,22 +3,33 @@ extern crate sdl2;
 use std::fs;
 use std::fs::File;
 use std::io::Read;
+use std::sync::mpsc::{Receiver, Sender, channel, TryRecvError};
 use std::sync::{Arc, RwLock};
 use std::thread;
 use std::time::{Duration, Instant};
 
+use rodio::source::SineWave;
+use rodio::{OutputStream, Sink, Source};
 use sdl2::event::Event;
 use sdl2::keyboard::Scancode;
 
 pub mod vm;
 pub mod screen;
 
+enum Signal {
+    DecrementDelayTimer,
+    DecrementSoundTimer,
+    Terminate,
+    SendKeys(u16),
+}
+
 pub fn main() {
     let mut sys = vm::System::new();
-    let rom_data = get_file_as_byte_vec(&String::from("./test_opcode.ch8"));
+    let rom_data = get_file_as_byte_vec(&String::from("./pong.ch8"));
     sys.load_rom(rom_data);
 
-    let mut sys = Arc::new(RwLock::new(sys));
+    let sys = Arc::new(RwLock::new(sys));
+    let (tx, rx): (Sender<Signal>, Receiver<Signal>) = channel();
 
     let sys_tick = sys.clone();
     let ticker_thread = thread::spawn(move || {
@@ -33,9 +44,28 @@ pub fn main() {
             let write_start = Instant::now();
             {
                 let sys = sys_tick.read().unwrap();
+
+                'delay: loop {
+                    match rx.try_recv() {
+                        Ok(signal) => match signal {
+                            Signal::DecrementDelayTimer => if local_sys.delay_timer > 0 { local_sys.delay_timer -= 1 }
+                            Signal::DecrementSoundTimer => if local_sys.sound_timer > 0 { local_sys.sound_timer -= 1 }
+                            Signal::Terminate => local_sys.terminate(),
+                            Signal::SendKeys(keys) => local_sys.keys = keys,
+                        },
+                        Err(TryRecvError::Empty) => {
+                            break 'delay;
+                        },
+                        Err(TryRecvError::Disconnected) => {
+                            panic!("The signal channel has been disconnected");
+                        },
+                    }
+                }
+
                 if let vm::Status::Terminated = sys.status {
                     break;
                 }
+
                 sys.tick(&mut local_sys);
             }
             let write_elapsed = write_start.elapsed();
@@ -62,15 +92,8 @@ pub fn main() {
             }
 
 
-            /*
-            if sys.sound_timer > 0 {
-                // TODO: beep
-                println!("beep!");
-            }
-            */
         }
     });
-
 
     let sys_render = sys.clone();
     let render_thread = thread::spawn(move || {
@@ -78,6 +101,12 @@ pub fn main() {
         let target_interval = Duration::from_micros(1_000_000 / ticks_per_second);
 
         let mut screen = screen::Screen::new();
+
+        let (_stream, stream_handle) = OutputStream::try_default().unwrap();
+        let sink = Sink::try_new(&stream_handle).unwrap();
+        let mut beeping = false;
+
+        let mut beep_start = Instant::now();
 
         'main: loop {
             let tick_start = Instant::now();
@@ -101,19 +130,21 @@ pub fn main() {
             if keeb.is_scancode_pressed(Scancode::C) { input += 1 << 14; }
             if keeb.is_scancode_pressed(Scancode::V) { input += 1 << 15; }
 
-            {
-                if sys_render.read().unwrap().keys != input {
-                    let mut sys = sys_render.write().unwrap();
-                    sys.keys = input;
-                }
+            if sys_render.read().unwrap().keys != input {
+                tx.send(Signal::SendKeys(input)).unwrap();
+            }
+
+            if keeb.is_scancode_pressed(Scancode::Escape) {
+                tx.send(Signal::Terminate).unwrap();
+                break 'main;
             }
 
             'event: loop {
                 match screen.event_pump.poll_event() {
                     Some(event) => match event {
                         Event::Quit { timestamp: _ } => {
-                            let mut sys = sys_render.write().unwrap();
-                            sys.status = vm::Status::Terminated
+                            tx.send(Signal::Terminate).unwrap();
+                            break 'main;
                         }
                         _ => {},
                     }
@@ -131,6 +162,25 @@ pub fn main() {
                 }
             }
 
+            // ask the ticker thread to decrement delay timers
+            tx.send(Signal::DecrementDelayTimer).unwrap();
+            tx.send(Signal::DecrementSoundTimer).unwrap();
+
+            {
+                let sound_timer = { sys_render.read().unwrap().sound_timer };
+                if sound_timer > 0 && !beeping {
+                    println!("starting to beep");
+                    beep_start = Instant::now();
+                    let source = SineWave::new(500.0).take_duration(Duration::from_secs(5)).amplify(0.2);
+                    sink.append(source);
+                    beeping = true;
+                } else if sound_timer == 0 && beeping {
+                    let beep_end = Instant::now();
+                    println!("stopping, beeped for {}ms", beep_end.duration_since(beep_start).as_millis());
+                    sink.clear();
+                    beeping = false;
+                }
+            }
 
             let elapsed = tick_start.elapsed();
             if elapsed < target_interval {
@@ -139,8 +189,8 @@ pub fn main() {
         }
     });
 
-    ticker_thread.join().unwrap();
-    render_thread.join().unwrap();
+    ticker_thread.join().expect("ticker thread panicked");
+    render_thread.join().expect("render thread panicked");
 }
 
 fn get_file_as_byte_vec(filename: &String) -> Vec<u8> {
