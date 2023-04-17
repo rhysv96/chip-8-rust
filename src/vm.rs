@@ -383,6 +383,7 @@ impl VM {
 }
 
 #[derive(Debug)]
+#[derive(PartialEq)]
 pub enum OpCode {
     //// COMPLETE
     // Assign
@@ -444,4 +445,55 @@ pub enum OpCode {
     // Timer
     GetDelayTimerValue(u8), // FX07
     SetDelayTimerValue(u8), // FX15
+}
+
+#[cfg(test)]
+mod tests {
+    macro_rules! suite {
+        ($($label:ident => [$function:expr, $input:expr, $expected:expr],)+) => {
+            $(
+                #[test]
+                fn $label() {
+                    assert_eq!($function($input), $expected);
+                }
+            )*
+        };
+    }
+
+    suite!(
+        decode_8xy0 => [super::VM::decode, 0x8120, Ok(super::OpCode::SetXtoY(1, 2))],
+        decode_fx33 => [super::VM::decode, 0xF133, Ok(super::OpCode::SaveBCDConversionToMemory(1))],
+        decode_8xy1 => [super::VM::decode, 0x8321, Ok(super::OpCode::BitwiseOr(3, 2))],
+        decode_8xy2 => [super::VM::decode, 0x8132, Ok(super::OpCode::BitwiseAnd(1, 3))],
+        decode_8xy3 => [super::VM::decode, 0x8123, Ok(super::OpCode::BitwiseXor(1, 2))],
+        decode_8xy6 => [super::VM::decode, 0x8126, Ok(super::OpCode::ShiftRight(1, 2))],
+        decode_8xye => [super::VM::decode, 0x812E, Ok(super::OpCode::ShiftLeft(1, 2))],
+        decode_3xnn => [super::VM::decode, 0x3122, Ok(super::OpCode::SkipIfMemoryEqual(1, 0x22))],
+        decode_4xnn => [super::VM::decode, 0x4122, Ok(super::OpCode::SkipIfMemoryNotEqual(1, 0x22))],
+        decode_5xy0 => [super::VM::decode, 0x5120, Ok(super::OpCode::SkipIfRegisterEqual(1, 2))],
+        decode_9xy0 => [super::VM::decode, 0x9120, Ok(super::OpCode::SkipIfRegisterNotEqual(1, 2))],
+        decode_6xnn => [super::VM::decode, 0x6122, Ok(super::OpCode::SetRegister(1, 0x22))],
+        decode_7xnn => [super::VM::decode, 0x7122, Ok(super::OpCode::AddRegister(1, 0x22))],
+        decode_00e0 => [super::VM::decode, 0x00E0, Ok(super::OpCode::ClearScreen)],
+        decode_dxyn => [super::VM::decode, 0xD123, Ok(super::OpCode::Draw(1, 2, 3))],
+        decode_1nnn => [super::VM::decode, 0x1234, Ok(super::OpCode::Jump(0x234))],
+        decode_00ee => [super::VM::decode, 0x00EE, Ok(super::OpCode::ExitSubroutine)],
+        decode_2nnn => [super::VM::decode, 0x2345, Ok(super::OpCode::EnterSubroutine(0x345))],
+        decode_bnnn => [super::VM::decode, 0xB123, Ok(super::OpCode::JumpWithOffset(0x123))],
+        decode_ex9e => [super::VM::decode, 0xE19E, Ok(super::OpCode::SkipIfKeyPressed(1))],
+        decode_exa1 => [super::VM::decode, 0xE1A1, Ok(super::OpCode::SkipIfKeyNotPressed(1))],
+        decode_fx0a => [super::VM::decode, 0xF10A, Ok(super::OpCode::GetKeyBlocking(1))],
+        decode_8xy4 => [super::VM::decode, 0x8124, Ok(super::OpCode::AddYtoX(1, 2))],
+        decode_8xy5 => [super::VM::decode, 0x8125, Ok(super::OpCode::SubtractYfromX(1, 2))],
+        decode_8xy7 => [super::VM::decode, 0x8127, Ok(super::OpCode::SubtractXfromY(1, 2))],
+        decode_annn => [super::VM::decode, 0xA123, Ok(super::OpCode::SetIndexRegister(0x123))],
+        decode_fx1e => [super::VM::decode, 0xF21E, Ok(super::OpCode::AddXToIndexRegister(2))],
+        decode_fx29 => [super::VM::decode, 0xF129, Ok(super::OpCode::SetIndexToFontCharacter(1))],
+        decode_fx55 => [super::VM::decode, 0xF155, Ok(super::OpCode::StoreMemory(1))],
+        decode_fx65 => [super::VM::decode, 0xF165, Ok(super::OpCode::LoadMemory(1))],
+        decode_cxnn => [super::VM::decode, 0xC122, Ok(super::OpCode::Random(1, 0x22))],
+        decode_fx18 => [super::VM::decode, 0xF218, Ok(super::OpCode::SetSoundTimerValue(2))],
+        decode_fx07 => [super::VM::decode, 0xF107, Ok(super::OpCode::GetDelayTimerValue(1))],
+        decode_fx15 => [super::VM::decode, 0xF215, Ok(super::OpCode::SetDelayTimerValue(2))],
+    );
 }
